@@ -2,8 +2,9 @@ import Image from 'next/image';
 import { UpdateInvoice, DeleteInvoice } from '@/app/ui/invoices/buttons';
 import InvoiceStatus from '@/app/ui/invoices/status';
 import { formatDateToLocal, formatCurrency } from '@/app/lib/utils';
-import { fetchFilteredInvoices } from '@/app/lib/data';
-
+import { InvoicesTable } from '@/app/lib/definitions';
+import prisma from '@/app/lib/db';
+const ITEMS_PER_PAGE = 6;
 export default async function InvoicesTable({
   query,
   currentPage,
@@ -11,7 +12,79 @@ export default async function InvoicesTable({
   query: string;
   currentPage: number;
 }) {
-  const invoices = await fetchFilteredInvoices(query, currentPage);
+  const offset = (currentPage - 1) * ITEMS_PER_PAGE;
+  const invoicesResult = await prisma.invoices.findMany({
+    select: {
+      id: true,
+      amount: true,
+      date: true,
+      status: true,
+      customer_id: true,
+      customers: {
+        select: {
+          name: true,
+          email: true,
+          image_url: true,
+        },
+      },
+    },
+    where: {
+      OR: [
+        {
+          status: {
+            contains: query,
+            mode: 'insensitive',
+          },
+        },
+        {
+          customers: {
+            name: {
+              contains: query,
+              mode: 'insensitive',
+            },
+          },
+        },
+        {
+          customers: {
+            email: {
+              contains: query,
+              mode: 'insensitive',
+            },
+          },
+        },
+      ],
+    },
+    orderBy: {
+      date: 'desc',
+    },
+    skip: offset,
+    take: 6,
+  });
+
+  const searchAmountAndDateInvoices = await prisma.$queryRaw<
+    InvoicesTable[]
+  >`SELECT invoices.id,
+  invoices.amount,
+  invoices.date,
+  invoices.status,
+  customers.name,
+  customers.email,
+  customers.image_url 
+  FROM invoices JOIN customers ON invoices.customer_id = customers.id 
+  WHERE invoices.amount::text LIKE CONCAT('%', ${query}, '%')
+  OR invoices.date::text LIKE CONCAT('%', ${query}, '%') ORDER BY invoices.date DESC LIMIT ${ITEMS_PER_PAGE} OFFSET ${offset}`;
+
+  const flattenInvoices = invoicesResult.map((i) => {
+    const { customers, ...rest } = i;
+    return {
+      ...rest,
+      ...customers,
+    };
+  });
+  const invoices = query
+    ? Array.from(new Set([...flattenInvoices, ...searchAmountAndDateInvoices]))
+    : Array.from(new Set([...flattenInvoices]));
+
   return (
     <div className="mt-6 flow-root">
       <div className="inline-block min-w-full align-middle">
@@ -22,6 +95,7 @@ export default async function InvoicesTable({
                 key={invoice.id}
                 className="mb-2 w-full rounded-md bg-white p-4"
               >
+                <p>{invoice.id}</p>
                 <div className="flex items-center justify-between border-b pb-4">
                   <div>
                     <div className="mb-2 flex items-center">
@@ -43,7 +117,7 @@ export default async function InvoicesTable({
                     <p className="text-xl font-medium">
                       {formatCurrency(invoice.amount)}
                     </p>
-                    <p>{formatDateToLocal(invoice.date)}</p>
+                    <p>{formatDateToLocal(invoice.date.toString())}</p>
                   </div>
                   <div className="flex justify-end gap-2">
                     <UpdateInvoice id={invoice.id} />
@@ -79,7 +153,7 @@ export default async function InvoicesTable({
             <tbody className="bg-white">
               {invoices?.map((invoice) => (
                 <tr
-                  key={invoice.id}
+                  key={`sp_${invoice.id}`}
                   className="w-full border-b py-3 text-sm last-of-type:border-none [&:first-child>td:first-child]:rounded-tl-lg [&:first-child>td:last-child]:rounded-tr-lg [&:last-child>td:first-child]:rounded-bl-lg [&:last-child>td:last-child]:rounded-br-lg"
                 >
                   <td className="whitespace-nowrap py-3 pl-6 pr-3">
@@ -101,7 +175,7 @@ export default async function InvoicesTable({
                     {formatCurrency(invoice.amount)}
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">
-                    {formatDateToLocal(invoice.date)}
+                    {formatDateToLocal(invoice.date.toString())}
                   </td>
                   <td className="whitespace-nowrap px-3 py-3">
                     <InvoiceStatus status={invoice.status} />
