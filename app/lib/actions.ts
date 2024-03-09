@@ -1,6 +1,4 @@
 'use server';
-
-import { sql } from '@vercel/postgres';
 import { z } from 'zod';
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
@@ -123,7 +121,9 @@ export async function updateInvoice(
 
 export async function deleteInvoice(id: string) {
   try {
-    await sql`DELETE FROM invoices WHERE id = ${id}`;
+    await prisma.invoices.delete({
+      where: { id: id },
+    });
   } catch (error) {
     return {
       message: 'Database Error: Failed to Delete Invoice.',
