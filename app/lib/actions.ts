@@ -6,7 +6,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { signIn } from '@/auth';
 import { AuthError } from 'next-auth';
-
+import prisma from '@/app/lib/db';
 export async function authenticate(
   prevState: string | undefined,
   formData: FormData,
@@ -109,11 +109,10 @@ export async function updateInvoice(
   const { customerId, amount, status } = validatedFields.data;
   const amountInCents = amount * 100;
   try {
-    await sql`
-  UPDATE invoices
-  SET customer_id = ${customerId}, amount = ${amountInCents}, status = ${status}
-  WHERE id = ${id}
-`;
+    await prisma.invoices.update({
+      where: { id: id },
+      data: { customer_id: customerId, amount: amountInCents, status: status },
+    });
   } catch (error) {
     return {
       message: 'Database Error: Failed to Update Invoice.',
