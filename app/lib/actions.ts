@@ -123,7 +123,9 @@ export async function updateInvoice(
 
 export async function deleteInvoice(id: string) {
   try {
-    await sql`DELETE FROM invoices WHERE id = ${id}`;
+    await prisma.invoices.delete({
+      where: { id: id },
+    });
   } catch (error) {
     return {
       message: 'Database Error: Failed to Delete Invoice.',
